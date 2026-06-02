@@ -5,19 +5,24 @@ import xml.etree.ElementTree as ET
 import openpyxl
 import os
 
-# ── Configuração da página ──────────────────────────────────────────────────
 st.set_page_config(
     page_title="Agente de Cartões Brasil 2026",
     page_icon="💳",
     layout="centered",
 )
 
-# ── Leitura dos arquivos de conhecimento ────────────────────────────────────
+# ── CSS para botões de seleção ───────────────────────────────────────────────
+st.markdown("""
+<style>
+div[data-testid="stHorizontalBlock"] button {
+    border-radius: 20px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 @st.cache_data(show_spinner="Carregando base de conhecimento...")
 def carregar_base():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # .docx
     docx_path = os.path.join(base_dir, "referencia_cartoes_agente_2026.docx")
     paragrafos = []
     with zipfile.ZipFile(docx_path, "r") as z:
@@ -30,7 +35,6 @@ def carregar_base():
                     paragrafos.append(texto.strip())
     doc_texto = "\n".join(paragrafos)
 
-    # .xlsx
     xlsx_path = os.path.join(base_dir, "cartoes_credito_brasil_2026_v2.xlsx")
     wb = openpyxl.load_workbook(xlsx_path, data_only=True)
     abas = []
@@ -44,7 +48,7 @@ def carregar_base():
         abas.append(f"=== ABA: {nome} ===\n" + "\n".join(linhas))
     xlsx_texto = "\n\n".join(abas)
 
-    sistema = f"""Você é o Agente de Cartões de Crédito Brasil 2026.
+    return f"""Você é o Agente de Cartões de Crédito Brasil 2026.
 Sua base de conhecimento contém dados detalhados sobre cartões de crédito brasileiros, programas de pontos, perfis de usuário e estratégias de recomendação.
 
 === DOCUMENTO DE REFERÊNCIA ===
@@ -59,15 +63,11 @@ Regras:
 - Baseie todas as respostas EXCLUSIVAMENTE na base de conhecimento acima.
 - Se uma informação não estiver na base, diga que não tem essa informação.
 """
-    return sistema
 
 
 def chamar_claude(sistema: str, mensagem: str) -> str:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        api_key = st.session_state.get("api_key", "")
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "") or st.session_state.get("api_key", "")
     client = anthropic.Anthropic(api_key=api_key)
-
     resposta = ""
     with client.messages.stream(
         model="claude-sonnet-4-6",
@@ -78,6 +78,37 @@ def chamar_claude(sistema: str, mensagem: str) -> str:
         for texto in stream.text_stream:
             resposta += texto
     return resposta
+
+
+def botoes_selecao_unica(label, opcoes, key):
+    """Seção colapsável com botões de seleção única."""
+    with st.expander(label, expanded=False):
+        selecionado = st.session_state.get(key, opcoes[0])
+        cols = st.columns(2)
+        for i, op in enumerate(opcoes):
+            tipo = "primary" if selecionado == op else "secondary"
+            if cols[i % 2].button(op, key=f"{key}_{i}", type=tipo, use_container_width=True):
+                st.session_state[key] = op
+                st.rerun()
+    return st.session_state.get(key, opcoes[0])
+
+
+def botoes_selecao_multipla(label, opcoes, key):
+    """Seção colapsável com botões de seleção múltipla."""
+    with st.expander(label, expanded=False):
+        selecionados = st.session_state.get(key, [])
+        cols = st.columns(2)
+        for i, op in enumerate(opcoes):
+            marcado = op in selecionados
+            tipo = "primary" if marcado else "secondary"
+            if cols[i % 2].button(op, key=f"{key}_{i}", type=tipo, use_container_width=True):
+                if marcado:
+                    selecionados = [x for x in selecionados if x != op]
+                else:
+                    selecionados = selecionados + [op]
+                st.session_state[key] = selecionados
+                st.rerun()
+    return st.session_state.get(key, [])
 
 
 # ── Estado da sessão ─────────────────────────────────────────────────────────
@@ -92,7 +123,7 @@ if "resultado" not in st.session_state:
 st.title("💳 Agente de Cartões de Crédito")
 st.caption("Brasil 2026 · Powered by Claude")
 
-# ── API Key (se não tiver no ambiente) ───────────────────────────────────────
+# ── API Key ───────────────────────────────────────────────────────────────────
 if not st.session_state.api_key:
     with st.expander("🔑 Configurar chave de API", expanded=True):
         chave = st.text_input("ANTHROPIC_API_KEY", type="password", placeholder="sk-ant-...")
@@ -101,11 +132,10 @@ if not st.session_state.api_key:
             st.rerun()
     st.stop()
 
-# ── Carrega base ─────────────────────────────────────────────────────────────
 try:
     sistema = carregar_base()
 except FileNotFoundError as e:
-    st.error(f"Arquivo não encontrado: {e}\n\nCertifique-se de que `app.py` está na mesma pasta que os arquivos `.docx` e `.xlsx`.")
+    st.error(f"Arquivo não encontrado: {e}")
     st.stop()
 
 # ── Menu principal ────────────────────────────────────────────────────────────
@@ -133,72 +163,61 @@ st.divider()
 # ── Modo: Recomendar ──────────────────────────────────────────────────────────
 if st.session_state.modo == "recomendar":
     st.subheader("🎯 Recomendar cartão para o meu perfil")
-    with st.form("form_recomendar"):
-        renda = st.selectbox("Renda mensal aproximada", [
-            "Até R$ 1.000", "R$ 1.000 – R$ 3.000", "R$ 3.000 – R$ 5.000",
-            "R$ 5.000 – R$ 10.000", "R$ 10.000 – R$ 20.000", "Acima de R$ 20.000"
-        ])
 
-        st.markdown("**Objetivos** (selecione todos que se aplicam)")
-        obj_latam   = st.checkbox("Milhas LATAM")
-        obj_azul    = st.checkbox("Milhas Azul")
-        obj_smiles  = st.checkbox("Milhas Smiles (GOL)")
-        obj_cash    = st.checkbox("Cashback")
-        obj_lounge  = st.checkbox("Lounge / Sala VIP")
-        obj_gratis  = st.checkbox("Sem anuidade / custo zero")
+    RENDAS = [
+        "Até R$ 1.000", "R$ 1.000 – R$ 3.000", "R$ 3.000 – R$ 5.000",
+        "R$ 5.000 – R$ 10.000", "R$ 10.000 – R$ 20.000", "Acima de R$ 20.000"
+    ]
+    OBJETIVOS = [
+        "Milhas LATAM", "Milhas Azul", "Milhas Smiles (GOL)",
+        "Cashback", "Lounge / Sala VIP", "Sem anuidade / custo zero"
+    ]
+    BANCOS = [
+        "XP Investimentos", "BTG Pactual", "Banco Inter", "Banco do Brasil",
+        "Bradesco", "Santander", "Itaú", "Nubank", "Caixa Econômica Federal",
+        "C6 Bank", "Nenhum"
+    ]
 
-        st.markdown("**Investimentos em bancos** (selecione todos que se aplicam)")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            inv_xp      = st.checkbox("XP Investimentos")
-            inv_btg     = st.checkbox("BTG Pactual")
-            inv_inter   = st.checkbox("Banco Inter")
-            inv_bb      = st.checkbox("Banco do Brasil")
-        with col_b:
-            inv_brad    = st.checkbox("Bradesco")
-            inv_sant    = st.checkbox("Santander")
-            inv_itau    = st.checkbox("Itaú")
-            inv_nenhum  = st.checkbox("Nenhum", value=True)
+    renda = botoes_selecao_unica("💰 Renda mensal aproximada", RENDAS, "rec_renda")
+    st.caption(f"Selecionado: **{renda}**")
 
-        st.markdown("**Valor investido por banco** (deixe em branco se não tiver)")
-        col1i, col2i = st.columns(2)
-        with col1i:
-            val_xp    = st.number_input("XP (R$)",      min_value=0, step=10000, value=0)
-            val_btg   = st.number_input("BTG (R$)",     min_value=0, step=10000, value=0)
-            val_inter = st.number_input("Inter (R$)",   min_value=0, step=10000, value=0)
-            val_bb    = st.number_input("BB (R$)",      min_value=0, step=10000, value=0)
-        with col2i:
-            val_brad  = st.number_input("Bradesco (R$)",  min_value=0, step=10000, value=0)
-            val_sant  = st.number_input("Santander (R$)", min_value=0, step=10000, value=0)
-            val_itau  = st.number_input("Itaú (R$)",      min_value=0, step=10000, value=0)
+    objetivos = botoes_selecao_multipla("🎯 Objetivos (pode escolher mais de um)", OBJETIVOS, "rec_objetivos")
+    if objetivos:
+        st.caption(f"Selecionados: **{', '.join(objetivos)}**")
 
-        viaja = st.radio("Viaja com frequência?", ["Sim", "Não"], horizontal=True)
-        submitted = st.form_submit_button("Recomendar", type="primary", use_container_width=True)
+    bancos = botoes_selecao_multipla("🏦 Investimentos em bancos (pode escolher mais de um)", BANCOS, "rec_bancos")
+    if bancos:
+        st.caption(f"Selecionados: **{', '.join(bancos)}**")
 
-    if submitted:
-        objetivos = [o for o, v in [
-            ("Milhas LATAM", obj_latam), ("Milhas Azul", obj_azul),
-            ("Milhas Smiles (GOL)", obj_smiles), ("Cashback", obj_cash),
-            ("Lounge / Sala VIP", obj_lounge), ("Sem anuidade / custo zero", obj_gratis)
-        ] if v] or ["Não especificado"]
+    # Valor investido — só para bancos selecionados (exceto "Nenhum")
+    bancos_com_valor = [b for b in bancos if b != "Nenhum"]
+    valores_investidos = {}
+    if bancos_com_valor:
+        st.markdown("**Valor investido por banco:**")
+        for banco in bancos_com_valor:
+            valores_investidos[banco] = st.number_input(
+                f"{banco} (R$)", min_value=0, step=10000, value=0, key=f"val_{banco}"
+            )
 
-        investimentos = []
-        for banco, marcado, valor in [
-            ("XP Investimentos", inv_xp, val_xp), ("BTG Pactual", inv_btg, val_btg),
-            ("Banco Inter", inv_inter, val_inter), ("Banco do Brasil", inv_bb, val_bb),
-            ("Bradesco", inv_brad, val_brad), ("Santander", inv_sant, val_sant),
-            ("Itaú", inv_itau, val_itau),
-        ]:
-            if marcado:
-                investimentos.append(f"{banco}: R$ {valor:,.0f}" if valor > 0 else banco)
-        inv_texto = ", ".join(investimentos) if investimentos else "Nenhum"
+    viaja = st.radio("✈️ Viaja com frequência?", ["Sim", "Não"], horizontal=True)
+    gasto = st.text_input("💳 Gasto médio mensal no cartão (R$)", placeholder="ex: 5000")
+
+    if st.button("🎯 Recomendar", type="primary", use_container_width=True):
+        inv_texto = "Nenhum"
+        if bancos_com_valor:
+            partes = []
+            for banco in bancos_com_valor:
+                val = valores_investidos.get(banco, 0)
+                partes.append(f"{banco}: R$ {val:,.0f}" if val > 0 else banco)
+            inv_texto = ", ".join(partes)
 
         prompt = (
             f"Perfil do usuário:\n"
             f"- Renda mensal: {renda}\n"
-            f"- Objetivos: {', '.join(objetivos)}\n"
+            f"- Objetivos: {', '.join(objetivos) if objetivos else 'Não especificado'}\n"
             f"- Investimentos: {inv_texto}\n"
-            f"- Viaja frequentemente: {viaja}\n\n"
+            f"- Viaja frequentemente: {viaja}\n"
+            f"- Gasto médio mensal no cartão: R$ {gasto or 'Não informado'}\n\n"
             f"Com base nesse perfil, recomende até 3 cartões de crédito. "
             f"Para cada um, explique por que faz sentido, qual a anuidade e se há algum alerta para 2026. "
             f"Leve em conta os investimentos bancários para identificar cartões exclusivos por relacionamento."
@@ -213,7 +232,6 @@ elif st.session_state.modo == "comparar":
         cartao1 = st.text_input("Primeiro cartão", placeholder="ex: Nubank Ultravioleta")
         cartao2 = st.text_input("Segundo cartão", placeholder="ex: C6 Carbon")
         submitted = st.form_submit_button("Comparar", type="primary", use_container_width=True)
-
     if submitted and cartao1 and cartao2:
         prompt = (
             f"Compare os cartões '{cartao1}' e '{cartao2}' lado a lado. "
@@ -231,7 +249,6 @@ elif st.session_state.modo == "anuidade":
         gasto_mensal = st.number_input("Gasto médio mensal no cartão (R$)", min_value=0, value=3000, step=500)
         uso_lounge = st.radio("Usa salas VIP em aeroportos?", ["Sim", "Não", "Às vezes"], horizontal=True)
         submitted = st.form_submit_button("Calcular", type="primary", use_container_width=True)
-
     if submitted and cartao:
         prompt = (
             f"O usuário quer saber se vale a pena pagar a anuidade do '{cartao}'.\n"
@@ -250,7 +267,6 @@ elif st.session_state.modo == "explicar":
     with st.form("form_explicar"):
         cartao = st.text_input("Nome do cartão", placeholder="ex: XP Visa Infinite")
         submitted = st.form_submit_button("Explicar", type="primary", use_container_width=True)
-
     if submitted and cartao:
         prompt = (
             f"Explique tudo sobre o cartão '{cartao}': anuidade, como isentar, programa de pontos, "
