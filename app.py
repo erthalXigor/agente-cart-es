@@ -124,6 +124,10 @@ st.title("💳 Agente de Cartões de Crédito")
 st.caption("Brasil 2026 · Powered by Claude")
 
 # ── API Key ───────────────────────────────────────────────────────────────────
+# Tenta pegar do ambiente novamente (Railway injeta após inicialização)
+if not st.session_state.api_key:
+    st.session_state.api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
 if not st.session_state.api_key:
     with st.expander("🔑 Configurar chave de API", expanded=True):
         chave = st.text_input("ANTHROPIC_API_KEY", type="password", placeholder="sk-ant-...")
