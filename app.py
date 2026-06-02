@@ -169,8 +169,8 @@ if st.session_state.modo == "recomendar":
     st.subheader("🎯 Recomendar cartão para o meu perfil")
 
     RENDAS = [
-        "Até R$ 1.000", "R$ 1.000 – R$ 3.000", "R$ 3.000 – R$ 5.000",
-        "R$ 5.000 – R$ 10.000", "R$ 10.000 – R$ 20.000", "Acima de R$ 20.000"
+        "Até R$ 1.000", "R$ 1.000 - R$ 3.000", "R$ 3.000 - R$ 5.000",
+        "R$ 5.000 - R$ 10.000", "R$ 10.000 - R$ 20.000", "Acima de R$ 20.000"
     ]
     OBJETIVOS = [
         "Milhas LATAM", "Milhas Azul", "Milhas Smiles (GOL)",
@@ -179,7 +179,7 @@ if st.session_state.modo == "recomendar":
     BANCOS = [
         "XP Investimentos", "BTG Pactual", "Banco Inter", "Banco do Brasil",
         "Bradesco", "Santander", "Itaú", "Nubank", "Caixa Econômica Federal",
-        "C6 Bank", "Nenhum"
+        "C6 Bank", "PicPay", "Banrisul", "Nenhum"
     ]
 
     renda = botoes_selecao_unica("💰 Renda mensal aproximada", RENDAS, "rec_renda")
